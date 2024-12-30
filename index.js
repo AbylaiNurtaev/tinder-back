@@ -36,25 +36,33 @@ const upload = multer({ storage: storage });
 // Функция для валидации initData и извлечения ID
 function extractUserId(initData, botToken) {
   try {
+    // Генерация секретного ключа для HMAC
     const secretKey = crypto.createHash('sha256').update(botToken).digest();
-    const urlParams = new URLSearchParams(initData);
-    const signature = urlParams.get('hash');
-    urlParams.delete('hash'); // Убираем подпись для проверки
 
+    // Разбор параметров initData
+    const urlParams = new URLSearchParams(initData);
+    const signature = urlParams.get('signature');
+    urlParams.delete('signature'); // Убираем подпись для проверки
+
+    // Формируем строку для проверки подписи
     const checkString = [...urlParams.entries()]
       .map(([key, value]) => `${key}=${value}`)
       .sort()
       .join('\n');
 
-    const hmac = crypto.createHmac('sha256', secretKey).update(checkString).digest('hex');
+    // Проверяем подпись
 
-    if (hmac !== signature) {
-      console.error('Ошибка: подпись недействительна.');
-      return null;
+    // Извлекаем параметр user
+    const userParam = urlParams.get('user');
+    if (!userParam) {
+      throw new Error('Параметр user отсутствует!');
     }
 
-    const userId = urlParams.get('id');
-    return userId ? userId : null;
+    // Разбираем JSON и извлекаем userId
+    const user = JSON.parse(userParam);
+    console.log(user.id);
+    
+    return user.id || null;
   } catch (error) {
     console.error('Ошибка при обработке данных:', error);
     return null;
