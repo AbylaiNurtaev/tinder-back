@@ -1,7 +1,26 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-
+import multer from 'multer';
 import User from '../models/User.js'; // Убедитесь, что путь правильный
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+
+const storage = multer.memoryStorage()
+const upload = multer({ storage: storage })
+
+const bucketName = process.env.BUCKET_NAME;
+const bucketRegion = process.env.BUCKET_REGION;
+const accessKey = process.env.ACCESS_KEY;
+const secretAccessKey = process.env.SECRET_ACCESS_KEY;
+
+const s3 = new S3Client({
+  credentials: {
+      accessKeyId: accessKey,
+      secretAccessKey: secretAccessKey,
+  },
+  region: bucketRegion,
+});
+
 
 export const register = async (req, res) => {
   try {
@@ -85,3 +104,45 @@ export const login = async (req, res) => {
 //   }
 // };
 
+export const uploadPhoto = async (req, res) => {
+  const { userId } = req.query;
+  const index = parseInt(req.query.index, 10); // Determine which photo field to update
+
+  if (!mongoose.Types.ObjectId.isValid(userId) || isNaN(index) || index < 0 || index > 2) {
+    return res.status(400).json({ error: 'Некорректные параметры' });
+  }
+
+  try {
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+
+    // Upload file to S3
+    const buffer = await sharp(req.file.buffer).toBuffer();
+    const imageName = `${userId}_${Date.now()}_${index}`;
+
+    const params = {
+      Bucket: bucketName,
+      Key: imageName,
+      Body: buffer,
+      ContentType: req.file.mimetype,
+    };
+
+    const command = new PutObjectCommand(params);
+    await s3.send(command);
+
+    // Update the user's photo field
+    const photoField = `photo${index + 1}`; // photo1, photo2, photo3
+    user[photoField] = imageName;
+    await user.save();
+
+    res.json({ message: 'Фото успешно загружено', user });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Ошибка при загрузке фото' });
+  }
+};
+
+// Multer Middleware Setup
+// const upload = multer({ storage: multer.memoryStorage() });

@@ -14,10 +14,22 @@ const UserSchema = new mongoose.Schema({
         type: String,
         required: true,
     },
+    birthday: String,
+    gender: String,
+    height: String,
+    height: Number,
+    Location: String,
+    wantToFind: String,
+    goal: String,
+    photo1: String,
+    photo2: String,
+    photo3: String,
+    about: String,
     role: {
         type: String,
         default: "user"
     },
+    telegramId: String
 }, {
     timestamps: true,
 });
