@@ -4,6 +4,10 @@ import multer from 'multer';
 import User from '../models/User.js'; // Убедитесь, что путь правильный
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import mongoose from 'mongoose';
+import sharp from 'sharp'
+import dotenv from 'dotenv';
+dotenv.config();
 
 const storage = multer.memoryStorage()
 const upload = multer({ storage: storage })
@@ -24,16 +28,17 @@ const s3 = new S3Client({
 
 export const register = async (req, res) => {
   try {
-    // Хэширование пароля
-    const salt = await bcrypt.genSalt(10); // Генерация соли
-    const hashedPassword = await bcrypt.hash(req.body.password, salt); // Хэширование пароля
-
-    // Создание нового пользователя
     const newUser = new User({
-      email: req.body.email,
       name: req.body.name,
-      password: hashedPassword, // Используем хэшированный пароль
-      role: req.body.role
+      birthDay: req.body.birthDay,
+      birthMonth: req.body.birthMonth,
+      birthYear: req.body.birthYear,
+      gender: req.body.gender,
+      height: req.body.height,
+      location: req.body.location,
+      wantToFind: req.body.wantToFind,
+      goal: req.body.goal,
+      telegramId: req.body.telegramId,
     });
 
     // Сохранение пользователя в базе данных
@@ -82,28 +87,46 @@ export const login = async (req, res) => {
 
 
 
-// export const updateUserInfo = async (req, res) => {
-//   try {
-//     const userId = req.params.id; 
-//     const { city, country, job, oblast } = req.body;
-
-//     const updatedUser = await User.findByIdAndUpdate(
-//       userId,
-//       { city, country, job, oblast }, // Обновляемые поля
-//       { new: true } // Возвращаем обновленный объект
-//     );
-
-//     if (!updatedUser) {
-//       return res.status(404).json({ message: 'Пользователь не найден' });
-//     }
-
-//     res.json({ message: 'Информация обновлена', user: updatedUser });
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ message: 'Не удалось обновить информацию' });
-//   }
-// };
-
+  export const updateUserInfo = async (req, res) => {
+    try {
+      const userId = req.params.id;
+  
+      // Получаем текущего пользователя
+      const user = await User.findById(userId);
+  
+      if (!user) {
+        return res.status(404).json({ message: 'Пользователь не найден' });
+      }
+  
+      // Формируем данные для обновления или добавления
+      const updateData = {};
+      const updatableFields = ['name', 'gender', 'photo1', 'photo2', 'photo3', 'height', 'goal', 'location', 'about'];
+  
+      updatableFields.forEach((field) => {
+        // Если параметр передан, обновляем его
+        if (req.body[field] !== undefined) {
+          updateData[field] = req.body[field];
+        }
+        // Если параметр не передан и его нет в документе, добавляем с пустым значением
+        else if (user[field] === undefined) {
+          updateData[field] = ''; // Или любое значение по умолчанию
+        }
+      });
+  
+      const updatedUser = await User.findByIdAndUpdate(
+        userId,
+        updateData, // Обновляем/добавляем данные
+        { new: true } // Возвращаем обновленный объект
+      );
+  
+      res.json({ message: 'Информация обновлена', user: updatedUser });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: 'Не удалось обновить информацию' });
+    }
+  };
+  
+  
 export const uploadPhoto = async (req, res) => {
   const { userId } = req.query;
   const index = parseInt(req.query.index, 10); // Determine which photo field to update
@@ -141,6 +164,56 @@ export const uploadPhoto = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Ошибка при загрузке фото' });
+  }
+};
+
+export const getUserById = async (req, res) => {
+  try {
+    const user = await User.findOne({ _id: req.body.userId });
+    
+
+    if (!user) {
+      return res.json({ message: "Пользователь не найден" });
+    }
+
+    // Генерация ссылок для каждого изображения в портфолио
+    const portfolioUrls = await Promise.all(
+      [user?.photo1, user?.photo2, user?.photo3]
+        .filter((key) => !!key) // Фильтруем только не null/undefined значения
+        .map(async (key) => {
+          const getObjectParams = {
+            Bucket: bucketName,
+            Key: key,
+          };
+          const command = new GetObjectCommand(getObjectParams);
+          const url = await getSignedUrl(s3, command, { expiresIn: 3600 }); // Можно сделать ссылки постоянными
+          return url;
+        })
+    );
+
+    user.photos = portfolioUrls;
+    console.log(portfolioUrls);
+
+    const token = jwt.sign(
+      {
+        _id: user._id,
+      },
+      'secret123',
+      {
+        expiresIn: "30d",
+      }
+    );
+
+    const { ...userData } = user._doc;
+    res.json({
+      ...userData,
+      token,
+    });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json({
+      message: "Ошибка при получении данных пользователя",
+    });
   }
 };
 
