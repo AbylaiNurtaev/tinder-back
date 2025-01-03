@@ -39,6 +39,7 @@ export const register = async (req, res) => {
       wantToFind: req.body.wantToFind,
       goal: req.body.goal,
       telegramId: req.body.telegramId,
+      city: req.body.city
     });
 
     // Сохранение пользователя в базе данных
@@ -100,7 +101,7 @@ export const login = async (req, res) => {
   
       // Формируем данные для обновления или добавления
       const updateData = {};
-      const updatableFields = ['name', 'gender', 'photo1', 'photo2', 'photo3', 'height', 'goal', 'location', 'about'];
+      const updatableFields = ['name', 'gender', 'photo1', 'photo2', 'photo3', 'height', 'goal', 'location', 'about', 'city'];
   
       updatableFields.forEach((field) => {
         // Если параметр передан, обновляем его

@@ -17,6 +17,7 @@ const UserSchema = new mongoose.Schema({
     photo1: String,
     photo2: String,
     photo3: String,
+    city: String,
     about: {
         type: String,
         default: ""

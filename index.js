@@ -134,6 +134,8 @@ app.post('/api/validate-init-data', async (req, res) => {
     // Разбираем JSON и извлекаем userId
     const user = JSON.parse(userParam);
     const existingUser = await User.findOne({ telegramId: user.id });
+    console.log(user.id);
+    
 
     if (existingUser) {
       return res.json({ status: 'Пользователь с таким Telegram ID уже существует.', user: existingUser });
