@@ -101,7 +101,7 @@ export const login = async (req, res) => {
   
       // Формируем данные для обновления или добавления
       const updateData = {};
-      const updatableFields = ['name', 'gender', 'photo1', 'photo2', 'photo3', 'height', 'goal', 'location', 'about', 'city'];
+      const updatableFields = ['name', 'gender', 'photo1', 'photo2', 'photo3', 'height', 'goal', 'location', 'about', 'city', 'birthDay', 'birthMonth', 'birthYear'];
   
       updatableFields.forEach((field) => {
         // Если параметр передан, обновляем его
