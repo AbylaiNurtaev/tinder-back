@@ -110,31 +110,8 @@ app.post('/api/validate-init-data', async (req, res) => {
   }
 
   try {
-    // Генерация секретного ключа для HMAC
-    const secretKey = crypto.createHash('sha256').update(botToken).digest();
-
-    // Разбор параметров initData
-    const urlParams = new URLSearchParams(initData);
-    const signature = urlParams.get('signature');
-    urlParams.delete('signature'); // Убираем подпись для проверки
-
-    // Формируем строку для проверки подписи
-    const checkString = [...urlParams.entries()]
-      .map(([key, value]) => `${key}=${value}`)
-      .sort()
-      .join('\n');
-
-
-    // Извлекаем параметр user
-    const userParam = urlParams.get('user');
-    if (!userParam) {
-      return res.status(400).json({ error: 'Параметр user отсутствует!' });
-    }
-
-    // Разбираем JSON и извлекаем userId
-    const user = JSON.parse(userParam);
-    const existingUser = await User.findOne({ telegramId: user.id });
-    console.log(user.id);
+    const existingUser = await User.findOne({ telegramId: initData });
+    console.log(initData);
     
 
     if (existingUser) {
@@ -142,7 +119,7 @@ app.post('/api/validate-init-data', async (req, res) => {
     }
 
     // Если пользователь не найден, возвращаем сообщение об отсутствии
-    return res.json({ status: 'Пользователь с таким Telegram ID не найден.', user: null, telegramId: user.id });
+    return res.json({ status: 'Пользователь с таким Telegram ID не найден.', user: null, telegramId: initData });
   } catch (error) {
     console.error('Ошибка при обработке данных:', error);
     return res.status(500).json({ error: 'Ошибка при обработке initData.' });
