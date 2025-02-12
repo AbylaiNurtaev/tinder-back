@@ -218,5 +218,138 @@ export const getUserById = async (req, res) => {
   }
 };
 
+
+
+export const getTopUsers = async (req, res) => {
+  try {
+      const { userId } = req.body; // ID текущего пользователя
+
+      // Получаем всех пользователей, исключая текущего пользователя
+      const users = await User.find(userId ? { _id: { $ne: userId } } : {});
+
+      if (users.length === 0) {
+          return res.json([]);
+      }
+
+      // Вычисляем рейтинг (лайки + дизлайки) / просмотры
+      const usersWithEngagement = users.map(user => ({
+          ...user._doc,
+          engagement: (user.likesReceived + user.dislikesReceived) / (user.profileViews || 1),
+      }));
+
+      // Сортируем по engagement (топовые пользователи наверху)
+      usersWithEngagement.sort((a, b) => b.engagement - a.engagement);
+
+      // Определяем границы топ-3% и топ-10%
+      const top3PercentIndex = Math.ceil(usersWithEngagement.length * 0.03);
+      const top10PercentIndex = Math.ceil(usersWithEngagement.length * 0.1);
+
+      const top3PercentUsers = usersWithEngagement.slice(0, top3PercentIndex);
+      const top10PercentUsers = usersWithEngagement.slice(top3PercentIndex, top10PercentIndex);
+      const otherUsers = usersWithEngagement.slice(top10PercentIndex);
+
+      // Объединяем пользователей с приоритетом (топ-3% → топ-10% → остальные)
+      const finalUserList = [...top3PercentUsers, ...top10PercentUsers, ...otherUsers];
+
+      // Генерация ссылок для изображений пользователей
+      const ratedUsers = await Promise.all(
+          finalUserList.map(async (user) => {
+              const portfolioUrls = await Promise.all(
+                  [user?.photo1, user?.photo2, user?.photo3]
+                      .filter((key) => !!key)
+                      .map(async (key) => {
+                          const getObjectParams = {
+                              Bucket: bucketName,
+                              Key: key,
+                          };
+                          const command = new GetObjectCommand(getObjectParams);
+                          const url = await getSignedUrl(s3, command, { expiresIn: 3600 });
+                          return url;
+                      })
+              );
+
+              return { ...user, photos: portfolioUrls };
+          })
+      );
+
+      res.json(ratedUsers);
+  } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: 'Ошибка при получении пользователей' });
+  }
+};
+
+export const getTelegramId = async (req, res) => {
+  const initData = req.body.initData;
+  console.log(req.body.initData)
+
+  try {
+    let existingUser = await User.findOne({ telegramId: initData });
+
+    if (existingUser) {
+      return res.json({ status: 'Пользователь с таким Telegram ID уже существует.', user: existingUser });
+    }
+
+    // Создаем нового пользователя, если не найден
+    const newUser = new User({
+      telegramId: initData
+    });
+
+    await newUser.save();
+
+    return res.json({ 
+      status: 'Новый пользователь создан.', 
+      user: newUser, 
+      telegramId: newUser.telegramId 
+    });
+
+  } catch (error) {
+    console.error('Ошибка при обработке данных:', error);
+    return res.status(500).json({ error: 'Ошибка при обработке initData.' });
+  }
+};
+
+
+
+export const reactToUser = async (req, res) => {
+  try {
+    const { userId, targetUserId, action } = req.body;
+
+    if (!userId || !targetUserId || !['like', 'dislike'].includes(action)) {
+      return res.status(400).json({ message: 'Некорректные данные' });
+    }
+
+    const user = await User.findById(userId);
+    const targetUser = await User.findById(targetUserId);
+
+    if (!user || !targetUser) {
+      return res.status(404).json({ message: 'Пользователь не найден' });
+    }
+
+    if (action === 'like') {
+      if (!user.likes.includes(targetUserId)) {
+          user.likes.push(targetUserId);
+          user.likesGiven += 1;
+          targetUser.likesReceived += 1;
+      }
+  } else {
+      if (!user.dislikes.includes(targetUserId)) {
+          user.dislikes.push(targetUserId);
+          user.dislikesGiven += 1;
+          targetUser.dislikesReceived += 1;
+      }
+  }
+  
+
+    await user.save();
+
+    res.json({ message: `Вы ${action === 'like' ? 'лайкнули' : 'дизлайкнули'} пользователя`, user });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Ошибка сервера' });
+  }
+};
+
+
 // Multer Middleware Setup
 // const upload = multer({ storage: multer.memoryStorage() });

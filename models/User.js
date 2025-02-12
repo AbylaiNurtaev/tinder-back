@@ -3,13 +3,11 @@ import mongoose from "mongoose";
 const UserSchema = new mongoose.Schema({
     name: {
         type: String,
-        required: true,
     },
     birthDay: String,
     birthMonth: String,
     birthYear: String,
     gender: String,
-    height: String,
     height: Number,
     location: String,
     wantToFind: String,
@@ -22,7 +20,6 @@ const UserSchema = new mongoose.Schema({
         type: String,
         default: ""
     },
-
     role: {
         type: String,
         default: "user"
@@ -31,7 +28,15 @@ const UserSchema = new mongoose.Schema({
         type: [String],
         default: []
     },
-    telegramId: { type: Number, unique: true, required: true }
+    likes: { type: [mongoose.Schema.Types.ObjectId], ref: 'User', default: [] },
+    dislikes: { type: [mongoose.Schema.Types.ObjectId], ref: 'User', default: [] },
+    telegramId: { type: Number, unique: true, required: true },
+    likesReceived: { type: Number, default: 0 },
+    dislikesReceived: { type: Number, default: 0 },
+    profileViews: { type: Number, default: 0 },
+    userActivity: { type: Number, default: 0 },
+    likesGiven: { type: Number, default: 0 },
+    dislikesGiven: { type: Number, default: 0 },
 }, {
     timestamps: true,
 });

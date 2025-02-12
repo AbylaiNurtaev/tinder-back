@@ -4,9 +4,11 @@ import chalk from 'chalk';
 import dotenv from 'dotenv';
 import multer from 'multer';
 import cors from 'cors';
-import crypto from 'crypto';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
 
 import * as UserController from './controllers/UserController.js';
+import * as ChatController from './controllers/ChatController.js';
 import User from './models/User.js';
 
 dotenv.config();
@@ -19,117 +21,61 @@ mongoose.connect('mongodb+srv://abeke:20060903@cluster0.vm8hy.mongodb.net/?retry
   .then(() => console.log(successMsg("DB ok")))
   .catch((err) => console.log(errorMsg("DB error:", err)));
 
-// Настройка Express
 const app = express();
+const server = createServer(app); // Создаем HTTP-сервер
+const io = new Server(server, { cors: { origin: "*" } }); // WebSocket сервер
 
-app.use(cors({
-  origin: '*', // Укажите домен вашего фронтенда
-  methods: ['GET', 'PATCH', 'POST', 'PUT', 'DELETE'],
-  credentials: true, // Если нужны куки или авторизация
-}));
-
+app.use(cors({ origin: '*', methods: ['GET', 'PATCH', 'POST', 'PUT', 'DELETE'], credentials: true }));
 app.use(express.json());
 
-// Настройка Multer
 const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
+const upload = multer({ storage });
 
-// Функция для валидации initData и извлечения ID
-// async function extractUserId(initData, botToken) {
-//   try {
-//     // Генерация секретного ключа для HMAC
-//     const secretKey = crypto.createHash('sha256').update(botToken).digest();
-
-//     // Разбор параметров initData
-//     const urlParams = new URLSearchParams(initData);
-//     const signature = urlParams.get('signature');
-//     urlParams.delete('signature'); // Убираем подпись для проверки
-
-//     // Формируем строку для проверки подписи
-//     const checkString = [...urlParams.entries()]
-//       .map(([key, value]) => `${key}=${value}`)
-//       .sort()
-//       .join('\n');
-
-//     // Проверяем подпись
-
-//     // Извлекаем параметр user
-//     const userParam = urlParams.get('user');
-//     if (!userParam) {
-//       throw new Error('Параметр user отсутствует!');
-//     }
-
-//     // Разбираем JSON и извлекаем userId
-//     const user = JSON.parse(userParam);
-//     const existingUser = await User.findOne({ telegramId: user.id });
-    
-    
-//     if (existingUser) {
-//       return { status: 'Пользователь с таким Telegram ID уже существует.', user: existingUser };
-//     }
-//     // Если пользователь не найден, возвращаем сообщение об отсутствии
-//     return { status: 'Пользователь с таким Telegram ID не найден.', user: null };
-//   } catch (error) {
-//     console.error('Ошибка при обработке данных:', error);
-//     return null;
-//   }
-// }
-
-// Middleware для проверки initData
-// function validateInitData(req, res, next) {
-//   const initData = req.body.initData; // Предполагается, что данные приходят в теле запроса
-//   const botToken = '7907947665:AAHIf4kb_zghTa8q0q1_06Hp2GFR11eqq_E'; // Укажите токен вашего бота
-
-//   if (!initData || !botToken) {
-//     return res.status(400).json({ error: 'initData или токен не предоставлены' });
-//   }
-
-//   const userId = extractUserId(initData, botToken);
-
-//   if (!userId) {
-//     return res.status(403).json({ error: 'Недействительные данные initData' });
-//   }
-
-//   req.userId = userId; // Сохраняем ID пользователя в запросе
-//   next();
-// }
-
-// Маршруты пользователей
+// 📌 Добавляем маршруты API
 app.post('/register', UserController.register);
 app.post('/login', UserController.login);
 app.post('/updateUserInfo/:id', UserController.updateUserInfo);
-app.post('/api/user/upload-photo', upload.single('photo'), UserController.uploadPhoto);
-app.post('/auth/getUserById', UserController.getUserById)
-// Новый маршрут для валидации initData
-app.post('/api/validate-init-data', async (req, res) => {
-  const initData = req.body.initData;
-  const botToken = '7907947665:AAHIf4kb_zghTa8q0q1_06Hp2GFR11eqq_E'; // Укажите токен вашего бота
+app.post('/auth/getUserById', UserController.getUserById);
+app.post('/users/getCandidates', UserController.getTopUsers);
+app.post('/users/react', UserController.reactToUser);
 
-  if (!initData || !botToken) {
-    return res.status(400).json({ error: 'initData или токен не предоставлены' });
-  }
+app.post('/getMessages', ChatController.getMessages);
 
-  try {
-    const existingUser = await User.findOne({ telegramId: initData });
-    console.log(initData);
-    
+app.post('/getTelegramId', UserController.getTelegramId)
 
-    if (existingUser) {
-      return res.json({ status: 'Пользователь с таким Telegram ID уже существует.', user: existingUser });
-    }
+// 📌 WebSocket логика
+const users = {}; // Связь userId -> socketId
 
-    // Если пользователь не найден, возвращаем сообщение об отсутствии
-    return res.json({ status: 'Пользователь с таким Telegram ID не найден.', user: null, telegramId: initData });
-  } catch (error) {
-    console.error('Ошибка при обработке данных:', error);
-    return res.status(500).json({ error: 'Ошибка при обработке initData.' });
-  }
+io.on("connection", (socket) => {
+    console.log(`Пользователь подключен: ${socket.id}`);
+
+    socket.on("joinChat", (userId) => {
+        users[userId] = socket.id;
+        console.log(`Пользователь ${userId} вошел в чат`);
+    });
+
+    socket.on("sendMessage", async ({ senderId, receiverId, message }) => {
+        const receiverSocketId = users[receiverId];
+
+        // Сохранение в базу данных
+        const savedMessage = await ChatController.saveMessage(senderId, receiverId, message);
+
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit("receiveMessage", savedMessage);
+        }
+    });
+
+    socket.on("disconnect", () => {
+        console.log(`Пользователь ${socket.id} отключился`);
+        for (let userId in users) {
+            if (users[userId] === socket.id) {
+                delete users[userId];
+                break;
+            }
+        }
+    });
 });
-
 
 // Запуск сервера
 const port = process.env.PORT || 3001;
-
-app.listen(port, () => {
-  console.log(successMsg("Listening on port:", port));
-});
+server.listen(port, () => console.log(successMsg(`Listening on port: ${port}`)));
